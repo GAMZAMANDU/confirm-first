@@ -1,0 +1,6 @@
+{
+  "name": "confirm-first",
+  "version": "0.1.0",
+  "description": "Intent-confirmation mode: the model states its reading of the request and its plan, and changes stay blocked until the user approves.",
+  "types": "./types/index.d.ts"
+}
