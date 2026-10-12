@@ -10,16 +10,18 @@ from pathlib import Path
 
 
 APPROVAL = re.compile(r"^\s*(응|네|넵|예|ㅇㅇ|ㅇㅋ|오케이|좋아|좋아요|그래|그대로|진행|진행해|진행해줘|이대로 진행|ok|okay|yes|y|go|lgtm)[\s.!~]*$", re.I)
-READ_TOOLS = {"Read", "Grep", "Glob", "LS", "List", "Search", "WebSearch", "WebFetch", "TodoRead", "PlanRead", "update_plan"}
+READ_TOOLS = {"Read", "Grep", "Glob", "LS", "List", "Search", "WebSearch", "WebFetch", "TodoRead", "PlanRead", "update_plan", "request_user_input_async"}
 READ_MCP = re.compile(r"^(get|read|list|search|query|find|view|show|describe|whoami|status|snapshot|screenshot|lsp_|tabs_context|batch_get|trace_|state_(read|get|list))", re.I)
 READ_COMMANDS = {"pwd", "ls", "cat", "head", "tail", "wc", "stat", "file", "rg", "grep", "git"}
 GIT_READ = {"status", "diff", "log", "show", "ls-files", "rev-parse", "grep", "blame", "ls-tree", "cat-file"}
 CONTEXT = ("[CONFIRM-FIRST] 변경 작업 전에 요청을 조사하고 사용자에게 확인을 받으세요. "
-           "확인 메시지에 '요청 해석:'과 '진행 계획:'을 각각 명시하고, 사용자의 별도 답변을 기다리세요. "
+           "request_user_input_async 질문창을 사용하세요. 질문 제목에 '요청 해석:'과 '진행 계획:'을 각각 명시하고 "
+           "선택지는 '이대로 진행'과 '해석 수정'을 제시하세요. 질문창을 띄운 뒤 사용자의 별도 답변을 기다리세요. "
+           "질문 도구가 제공되지 않는 환경에서만 일반 메시지로 같은 내용을 질문하세요. "
            "질문이나 설명만 필요한 경우 바로 답하세요. 승인 전에는 읽기 작업만 허용됩니다. "
            "사용자가 계획을 수정하면 갱신된 해석과 계획을 다시 확인받으세요.")
 DENY_REASON = ("[confirm-first] 사용자 승인 전 변경 작업이 차단되었습니다. "
-               "읽기 작업으로 맥락을 파악한 뒤 '요청 해석:'과 '진행 계획:'을 제시하고 별도 답변을 기다리세요.")
+               "읽기 작업으로 맥락을 파악한 뒤 request_user_input_async 질문창으로 해석과 계획을 확인받으세요.")
 
 
 def state_dir():
@@ -90,6 +92,23 @@ def read_only_tool(name, tool_input):
     return False
 
 
+def confirmation_question(tool_input):
+    if not isinstance(tool_input, dict):
+        return False
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list):
+        return False
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+        title = question.get("title")
+        options = question.get("options")
+        if (isinstance(title, str) and "요청 해석:" in title and "진행 계획:" in title
+                and isinstance(options, list) and "이대로 진행" in options and "해석 수정" in options):
+            return True
+    return False
+
+
 def handle(data):
     event = data.get("hook_event_name")
     session = data.get("session_id")
@@ -115,7 +134,12 @@ def handle(data):
         elif event == "PreToolUse":
             if phase in {"idle", "approved"}:
                 return
-            if not read_only_tool(str(data.get("tool_name") or ""), data.get("tool_input")):
+            name = str(data.get("tool_name") or "")
+            tool_input = data.get("tool_input")
+            if name == "request_user_input_async" and phase == "armed" and confirmation_question(tool_input):
+                set_state(db, session, "asked", turn)
+                return
+            if not read_only_tool(name, tool_input):
                 deny()
         elif event == "Stop":
             message = data.get("last_assistant_message") or ""

@@ -35,8 +35,10 @@ class ConfirmFirstTest(unittest.TestCase):
         self.assertFalse(self.blocked("one", "Bash", {"command": "git status"}))
         self.assertTrue(self.blocked("one", "Bash", {"command": "git diff --output=x"}))
         self.assertTrue(self.blocked("one", "mcp__fs__write_file", {"path": "x"}))
-        self.hook("Stop", turn_id="one", last_assistant_message="요청 해석: 버그 수정\n진행 계획: 파일 수정\n진행할까요?")
-        self.hook("UserPromptSubmit", turn_id="two", prompt="진행")
+        question = {"questions": [{"title": "요청 해석: 버그 수정\n진행 계획: 파일 수정",
+                                   "options": ["이대로 진행", "해석 수정"]}]}
+        self.assertFalse(self.blocked("one", "request_user_input_async", question))
+        self.hook("UserPromptSubmit", turn_id="two", prompt="이대로 진행")
         self.assertFalse(self.blocked("two", "apply_patch", {"command": "*** Begin Patch"}))
         self.hook("UserPromptSubmit", turn_id="three", prompt="다른 파일도 수정해")
         self.assertTrue(self.blocked("three", "apply_patch", {"command": "*** Begin Patch"}))
@@ -48,6 +50,13 @@ class ConfirmFirstTest(unittest.TestCase):
         self.hook("Stop", turn_id="two", last_assistant_message="요청 해석: 수정\n진행 계획: 편집")
         self.hook("UserPromptSubmit", turn_id="three", prompt="범위를 바꿔줘")
         self.assertTrue(self.blocked("three", "apply_patch", {}))
+
+    def test_unrelated_question_does_not_unlock(self):
+        self.hook("UserPromptSubmit", turn_id="one", prompt="Fix")
+        self.assertFalse(self.blocked("one", "request_user_input_async",
+                                      {"questions": [{"title": "선호하는 색상은?", "options": ["빨강", "파랑"]}]}))
+        self.hook("UserPromptSubmit", turn_id="two", prompt="이대로 진행")
+        self.assertTrue(self.blocked("two", "apply_patch", {}))
 
     def test_shell_expansion_is_denied(self):
         self.hook("UserPromptSubmit", turn_id="one", prompt="Fix")
@@ -65,6 +74,7 @@ class ConfirmFirstTest(unittest.TestCase):
         hooks = json.loads((root / "hooks.json").read_text())["hooks"]
         self.assertEqual(len(hooks["PreToolUse"]), 2)
         self.assertEqual(hooks["PreToolUse"][0], original["hooks"]["PreToolUse"][0])
+        self.assertNotIn("PostToolUse", hooks)
         self.assertTrue((root / "hooks" / "confirm-first.py").exists())
         self.assertEqual(json.loads((root / "hooks.json.before-confirm-first").read_text()), original)
 

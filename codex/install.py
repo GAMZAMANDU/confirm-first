@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 
-EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "Stop")
+EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop")
 SOURCE = Path(__file__).with_name("confirm_first.py")
 
 
@@ -32,7 +32,7 @@ def install(root: Path):
 
     hooks = config.setdefault("hooks", {})
     for event in EVENTS:
-        entries = hooks.setdefault(event, [])
+        entries = hooks.get(event, [])
         if not isinstance(entries, list):
             raise ValueError(f"Invalid {event} hooks")
         # Replace only our own entry, preserving all other hooks and their order.
@@ -40,6 +40,11 @@ def install(root: Path):
             isinstance(h, dict) and "confirm-first.py" in str(h.get("command", ""))
             for h in entry.get("hooks", [])
         ))]
+        if event == "PostToolUse":
+            if event in hooks:
+                hooks[event] = entries
+            continue
+        hooks[event] = entries
         entries.append({"hooks": [{"type": "command", "command": command,
                                     "commandWindows": windows_command, "timeout": 10}]})
 
