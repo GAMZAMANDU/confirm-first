@@ -1,2 +1,4 @@
 .claude-plugin/types/
 tsconfig.json
+__pycache__/
+*.pyc
